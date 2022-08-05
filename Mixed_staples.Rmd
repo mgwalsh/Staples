@@ -1,0 +1,587 @@
+---
+title:  Workflows for labeling mixed staple cropping systems with association rules and multilabel classification
+author: M.G. Walsh, J. Meliyo, J. Rutebuka and R. Manners
+date: "`r format(Sys.time(), '%d, %B, %Y')`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    fig_caption: true
+    keep_md: true
+    number_sections: true
+    css: style1.css
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+```
+
+# Introduction
+
+Staple foods make up the dominant food energy and nutrient intake in a population's diet. While there may be >50,000 [edible plants](https://www.sciencedirect.com/referencework/9780122270550/encyclopedia-of-food-sciences-and-nutrition) in the world, just 15 of these provide ~90% of the world's [gross food energy (GFE)](https://www.sciencedirect.com/topics/agricultural-and-biological-sciences/food-energy). Rice, maize, and wheat alone make up ~60% of the world's GFE. Other, more regional/local staples include: millet and sorghum, pulses such as beans, lentils and chickpeas, roots and tubers such as potatoes, sweet potatoes, cassava, yams, and taro, and animal foods such as meat, fish, eggs and dairy products (see [FAO](http://www.fao.org/3/AC832E/ac832e06.htm)). In turn, the combinations of staple foods that are consumed by people are thought to have specific population-level nutritional and environmental outcomes, which are currently not well described locally.
+
+[Association rules (AR)](https://en.wikipedia.org/wiki/Association_rule_learning) are used to answer common exploratory questions like: If someone walks into a supermarket and buys ground beef and french fries, what is the probability that this person would also buy burger buns? This is why it is also often referred to as [market basket analysis](https://www.sciencedirect.com/topics/computer-science/market-basket-analysis). Market basket analysis is a method of discovering customer purchasing patterns by extracting interesting co-occurrences from databases. For example, an if-then rule $\{ground\ beef,\ french\ fries\} \Rightarrow \{burger\ buns\}$ in the sales data of a supermarket might indicate that if customers were to buy ground beef and french fries together, they may also wish to buy burger buns. If that AR is frequent (enough) within a set of purchases at the store, the information might be used as a basis for decisions about store management such as e.g., targeted advertisement, promotional pricing and/or product placements within the store. 
+
+Many supermarket chains in the US and elsewhere are using these types of rule-based approaches for managing stores. This is why, for example, aisles in US supermarkets are arranged the way that they are ... milk (a frequently bought item) is nearly always located toward the rear of the store to encourage impulse buying. Impulse purchase items, such as baked goods and chewing gum, are placed toward the front of the store. Tonic is often close to gin, jam is close to bread and peanut butter, and chips are close to salsa. [Diapers and beer](https://www.theregister.com/2006/08/15/beer_diapers/) for targeting young fathers is a parable, but it's funny. There are also usually coupons or other offers for items that are likely to be purchased together. When browsing what is on offer look for products on either the top or bottom of the shelves as the eye-level shelves tend to be more pricey. 
+
+Items that are purchased together as part of a shopping list present a special class of [labeling](https://en.wikipedia.org/wiki/Labeled_data) problems for machine learning and various statistical applications because they contain multiple labels, which may be interdependent. The figure below illustrates the structure of multi-label data relative to binary and multi-class data types that occur much more frequently in [data mining](https://en.wikipedia.org/wiki/Data_mining) and spatial prediction tasks.
+
+<br>
+```{r, echo=FALSE, fig.align="center", fig.cap="**Main differences between binary, multiclass and multilabel data types.**", out.width = '75%'}
+
+knitr::include_graphics("classification.png")
+```
+
+From a data mining and machine learning perspective, the majority of East African food production systems resemble an itemized receipt from a supermarket, in which fields (shopping carts) tend to be [mixed](https://www.fao.org/3/Y0501E/y0501e03.ht) with several staple food crops grown simultaneously or in seasonal sequence, rather than being [monocropped](https://en.wikipedia.org/wiki/Monocropping) as they are in e.g., Iowa, Ukraine and South Africa. Even quite small, 0.25 ha, cropland areas are commonly planted with several staple food crops during any given season (see the pictures below). However, which specific crops are grown together in a given small area, and how these combinations may be evolving due to internal and environmental forces remain uncertain and largely unquantified. We'll use ARs and [multi-label classification](https://en.wikipedia.org/wiki/Multi-label_classification) in this notebook to explore and map cropping systems based on the occurrence of 20 georeferenced, staple crop indicator species that can subsequently be used for crop diversity monitoring applications.
+
+<br>
+```{r mixed_photos, echo=FALSE, fig.align="center", fig.cap="**Examples of mixed staple cropping systems in Rwanda.**", out.width = '90%'}
+
+knitr::include_graphics("Photos.png")
+```
+
+The main objective of this notebook is to introduce code for labeling, exploration and (spatial) discovery of different mixed staple food cropping systems in Rwanda and Tanzania. The data we use include georeferenced observations of the occurrence of: cattle, sheep, goats, poultry, maize, wheat, sorghum, rice, bean, cowpea, pigeon pea, soybean, groundnut, Irish potato, sweet potato, cassava, yam, banana/plantain, sugarcane, and sunflower. Note that most of these crops (except for sorghum, cow pea and yam) are exotic to Africa. This markdown notebook is maintained on [Github](), and you can fork and alter it from there for your reference and use.
+
+# Data setup
+
+The example data we shall be using were generated by the [TanSIS](https://doi.org/10.17605/OSF.IO/4NGAU) and [RwaSIS](https://doi.org/10.17605/OSF.IO/Y9ZUT) projects in Tanzania and Rwanda. They currently consist of >16k georeferenced, time stamped, photo tagged, field survey observations of staple crops that were observed in 0.25 ha circular primary sampling units (PSU, ~28.2 m radius), in proportion to their national occurrence, between 2015-2021. The spatially representative cropland sampling frames that are used in both currently still ongoing national survey data collections are described in [Walsh, Rutebuka and Manners (2021)](https://github.com/mgwalsh/RwaSIS/blob/master/RwaSIS_cropland_sample.Rmd). A field data collection framework (CropScout) has also been posted on [KoboToolbox](https://kobo.humanitarianresponse.info/#/forms/a3jwzkBTtDvdaZJgR6YjAe/), which you can either use directly or modify for your own use with Open Data Kit ([ODK](https://opendatakit.org/)). To actually run this notebook, you will need to load the R-packages that are indicated in the chunk directly below.
+
+```{r}
+# Package names
+packages <- c("osfr", "tidyverse", "leaflet", "arules", "arulesViz", "rgdal", "sp", "raster",
+              "doParallel", "caret", "randomForest")
+
+# Install packages
+installed_packages <- packages %in% rownames(installed.packages())
+if (any(installed_packages == FALSE)) {
+  install.packages(packages[!installed_packages])
+}
+
+# Load packages
+invisible(lapply(packages, library, character.only = TRUE))
+```
+
+The survey data and figures that are used in this notebook can be downloaded with the next chunk ... in theory. However, at the moment and for reasons beyond our control, you need to download the data manually into your working directory from [here](https://osf.io/2unc3/).
+
+```{r, results = 'hide'}
+dir.create("Results", showWarnings=F)
+
+# Download crop survey data manually into your working directory from: https://osf.io/2unc3/
+# osf_retrieve_file("2unc3/") %>% osf_download(conflicts = "overwrite") ## does not work currently
+
+staple <- read.table("TZ_RW_staples.csv", header = T, sep = ",")
+staple$rich <- rowSums(staple[, 6:25]) ## count of number of staples at each survey location
+staple$mixed <- ifelse(staple$rich > 1, 1, 0) ## sdiv >1 are tagged as mixed systems
+staple$mixed <- as.logical(staple$mixed)
+```
+
+# Staple crop association rules
+
+To address the question which staple food crops tend co-occur in Rwanda and Tanzania, we will initially be using a data mining process for exploratory analysis that is based on the concept of strong rules. *"Strong rules"* were introduced by [Agrawal et al., (1993)](https://dl.acm.org/doi/10.1145/170036.170072) in the context of [affinity analysis](https://en.wikipedia.org/wiki/Affinity_analysis). The three main metrics of interest in the application of strong rules are: **support**, **confidence** and **lift**.
+
+* **Support** tells us the proportion of instances where crops (and/or higher [cardinality](https://en.wikipedia.org/wiki/Cardinality) sets) $A$ and $B$ co-occur in $n$ observations. Support helps identify crop combinations that are sufficiently frequent to be of interest (e.g., maize in combination with beans and cattle). Conversely, it also tells us about the various combinations that are only rarely observed.
+
+$$supp(A \Rightarrow B)=\dfrac{A \cup B}{n}$$
+
+* **Confidence** is calculated as the proportion in which $B$ co-occurs with $A$. It is an indicator of how often an AR has been found to be true. It is also equal to the conditional probability $p(B|A)$ and conversely also $p(A|B)$.
+
+$$conf(A \Rightarrow B)=\dfrac{supp(A \Rightarrow B)}{supp(A)}$$
+
+* **Lift** of a rule is the ratio of the observed support to that expected if $A$ and $B$ were independent. Lift values > 1 indicate positive associations. Anti-correlations will generate lift values that are < 1 and correspond to crop combinations that rarely occur together.
+
+$$lift(A \Rightarrow B)=\dfrac{supp(A \Rightarrow B)}{supp(A)\ supp(B) }$$
+
+Association rules are considered to be interesting (strong) when they satisfy both support and confidence thresholds. These thresholds can/should be set by subject matter specialists e.g., agronomists and/or nutritionists. Note that there are some good, short tutorials available on YouTube that you might wish to consult to clarify the terminology in this context (e.g., https://www.youtube.com/watch?v=WGlMlS_Yydk). 
+
+To prepare the data that are used here for the association rule mining workflow we need to do a bit wrangling to select and recode the variables of interest. The [`arules`](https://www.rdocumentation.org/packages/arules/versions/1.6-8) package, which we will be using further below, only processes factor and logical variables.
+
+```{r}
+staple <- staple %>% 
+          mutate_if(is.integer, as.logical) %>%
+          mutate_if(is.character, as.factor)
+
+# Select crop occurrences and convert these to "transactions"
+trans <- staple[ , c(6:25)]
+trans <- as(trans, "transactions")
+crops <- DATAFRAME(trans)
+crops <- crops[, 1]
+staple_df <- cbind(staple, crops)
+staple_df <- staple_df[which(staple_df$rich > 0), ] # filters-out PSUs without any staple indicators
+```
+
+The crop variables represent the presence (`TRUE/FALSE`) of: cattle, sheep, goats, poultry, maize, wheat, sorghum, rice, bean, cowpea, pigeon pea, soybean, groundnut, Irish potato, sweet potato, cassava, yam, banana, sugarcane, and sunflower. There are also variables identifying the lat/lon (EPSG:3857) of the survey observations, if buildings were present within 50 m radius of the recorded survey location (`build = TRUE/FALSE`), and the number of staple crops that were observed in the respective 0.25 ha cropland quadrats (0 - 12). Systems where staple diversity `sdiv = 0` are croplands that do not contain any of the staple crops that will be used here. They do however include other crops such as tea, coffee, pineapple, sisal, cotton, orchards, etc, which are much more rare. We have excluded those from the subsequent analyses. The next chunk defines 5 staple crop types including: livestock (herd), cereals, pulses, roots & tubers and other staple crops.
+
+```{r}
+# Define staple crop types 
+staple_df <- staple_df %>%
+  mutate(herd = (catt == 'TRUE' | shee == 'TRUE' | goat == 'TRUE' | poul == 'TRUE')) %>%
+  mutate(cere = (maiz == 'TRUE' | whea == 'TRUE' | sorg == 'TRUE' | rice == 'TRUE')) %>%
+  mutate(puls = (bean == 'TRUE' | cpea == 'TRUE' | pige == 'TRUE' | soyb == 'TRUE' | gnut == 'TRUE')) %>%
+  mutate(root = (pota == 'TRUE' | spot == 'TRUE' | cass == 'TRUE' | yam == 'TRUE')) %>%
+  mutate(othe = (bana == 'TRUE' | cane == 'TRUE' | sunf == 'TRUE'))  
+
+# Data frame structure 
+glimpse(staple_df)
+```
+
+An overview map of where the PSUs were collected in Rwanda and Tanzania is generated by the next chunk. You can click and zoom into the individual locations that have been surveyed thus far. Note that mixed systems are shown in red, monocropped systems are shown in blue. When you click on any particular PSU, a popup will show the different staple crops that were observed at that location.
+
+```{r}
+col <- ifelse(staple_df$mixed == "TRUE", "red", "blue")
+
+# CropScout sample locations
+w <- leaflet() %>%
+  setView(lng = mean(staple_df$lon), lat = mean(staple_df$lat), zoom = 6) %>%
+  addProviderTiles(providers$OpenStreetMap.Mapnik) %>%
+  addCircleMarkers(staple_df$lon, staple_df$lat,
+                   popup = staple_df$crops,
+                   color = col,
+                   stroke = FALSE,
+                   fillOpacity = 0.8,
+                   radius = 6,
+                   clusterOptions = markerClusterOptions())
+
+w ## plot widget 
+```
+
+## Exploratory data analyses (EDA)
+
+This section provides some initial EDAs for these data.
+
+```{r, fig.align = "center", fig.height = 4, fig.width = 7, fig.cap = "**Figure 1:** Relative frequencies of individual staple food crops in Rwanda and Tanzania."}
+
+itemFrequencyPlot(trans, topN = 20, ylab = "Relative frequency", cex.lab = 1.2, col = "grey")
+```
+
+The graph provides an indication of the overall level of support for the 20 staple crops that are presented here. Maize is the most frequent, yam is the most infrequent. This means that various crop combinations with maize are likely to have more overall support than any crop combinations with e.g., yam.
+
+```{r}
+# Rwanda subset
+crops_RW <- staple_df[which(staple_df$survey == 'RW'), ]
+crops_RW <- crops_RW[ , c(6:25)]
+crops_RW <- as(crops_RW, "transactions")
+
+# Tanzania subset
+crops_TZ <- staple_df[which(staple_df$survey == 'TZ'), ]
+crops_TZ <- crops_TZ[ , c(6:25)]
+crops_TZ <- as(crops_TZ, "transactions")
+```
+
+... and then plot a comparison of the different crop distributions in the 2 national surveys with:
+
+```{r, fig.align = "center", fig.show = 'hold', fig.height = 8 , fig.width = 7, fig.cap = "**Figure 2:** Differences in support for staple food crop occurrences in Rwanda and Tanzania."}
+
+par(mfrow = c(2,1))
+itemFrequencyPlot(crops_RW, ylab = "Relative frequency", main = "Rwanda", 
+                  ylim = c(0, 0.7), cex.lab = 1.2, col = "grey")
+itemFrequencyPlot(crops_TZ, ylab = "Relative frequency", main = "Tanzania", 
+                  ylim = c(0,0.7), cex.lab = 1.2, col = "grey")
+```
+
+Based on Figure 2, you can tell that staple crop combinations grown in Tanzania are probably quite different from those grown in Rwanda. Those differences will need to be considered in any crop distribution mapping or monitoring applications. The next chunk calculates and plots the top 20 most frequent crop combinations that were observed in the surveys.
+
+```{r, results = 'hide'}
+freq_mix <- apriori(trans, parameter = list(target = "frequent itemsets", support = 0.025, minlen = 2))
+freq_mix <- DATAFRAME(freq_mix)
+freq_mix <- freq_mix[order(freq_mix$count, decreasing = TRUE), ]
+
+# select the top 20 mixed systems
+top_mix <- freq_mix[1:20, ]
+```
+
+```{r, fig.align = "center", fig.cap = "**Figure 3:** Relative frequencies of the 20 most frequent mixed cropping systems in Rwanda and Tanzania."}
+
+barplot(top_mix$support, names.arg = top_mix$items, ylab = "Relative frequency",
+        cex.names = 0.65, las = 2, col = "grey")
+```
+
+## Two very different supermarkets
+
+As the next chunks show, ARs are quite different between the cropping systems of Rwanda and Tanzania (i.e., the 2 supermarkets). 
+
+```{r, results = FALSE}
+# Rwanda subset
+crops_RW <- staple_df[which(staple_df$survey == 'RW'), ]
+crops_RW <- crops_RW[ , c(6:25)]
+crops_RW <- as(crops_RW, "transactions")
+
+# Rwanda rules
+RW_rules_rhs <- apriori(crops_RW, parameter = list(target = "rules", support = 0.025, confidence = 0.8, 
+                        minlen = 2))
+
+# Filter rules by lift and redundancy
+RW_rules_rhs <- subset(RW_rules_rhs, subset = lift > 1.5)
+RW_rules_rhs <- RW_rules_rhs[!is.redundant(RW_rules_rhs)]
+RW_rules_rhs <- sort(RW_rules_rhs, by = "support")
+RW_rules <- DATAFRAME(RW_rules_rhs)
+```
+
+```{r, fig.align ='center', out.width = "80%", fig.cap = "**Figure 4: **Association rule graph for the main staple crop combinations observed in Rwanda."}
+
+par(mar = c(4,4,1,1))
+plot(RW_rules_rhs, method = "graph", col = "black")
+```
+
+```{r, echo = FALSE}
+# Staple crop systems rule mining summary table
+inspectDT(RW_rules_rhs)
+```
+
+We can generate similar rules for the Tanzania survey for comparison (code not shown).
+
+```{r, echo = FALSE, results = 'hide'}
+# Tanzania subset
+crops_TZ <- staple_df[which(staple_df$survey == 'TZ'), ]
+crops_TZ <- crops_TZ[ , c(6:25)]
+crops_TZ <- as(crops_TZ, "transactions")
+
+# Tanzania rules
+TZ_rules_rhs <- apriori(crops_TZ, parameter = list(target = "rules", support = 0.025, confidence = 0.8,
+                                               minlen = 2))
+
+# Filter rules by lift and redundancy
+TZ_rules_rhs <- subset(TZ_rules_rhs, subset = lift > 1.5)
+TZ_rules_rhs <- TZ_rules_rhs[!is.redundant(TZ_rules_rhs)]
+TZ_rules_rhs <- sort(TZ_rules_rhs, by = "support")
+TZ_rules <- DATAFRAME(TZ_rules_rhs)
+```
+
+```{r, echo = FALSE, fig.align = "center", out.width = "80%", fig.cap = "**Figure 5:** Association rule graph of the main staple crop combinations observed in Tanzania."}
+
+par(mar = c(4,4,1,1))
+plot(TZ_rules_rhs, method = "graph", col ="black")
+```
+
+```{r, echo = FALSE}
+# Staple crop systems rule mining summary table
+inspectDT(TZ_rules_rhs)
+```
+
+The main message here is that the ARs observed in Rwanda are quite different from those in Tanzania. Notably, mixed livestock / agro-pastoral systems appear to be much more prevalent in Tanzania than in Rwanda. Conversely, mixed cropping systems in Rwanda tend to be much more staple rich than those typically found in Tanzania. 
+
+## Mixed cropping in proximity to buildings
+
+The main difference might be that staple crops in Rwanda are grown in much closer proximity to buildings than those in Tanzania, perhaps reflecting [allee](https://en.wikipedia.org/wiki/Allee_effect) (or positive population density dependence) effects. Alternatively, in Tanzania the relative staple paucity could indicate a remnant [Ujamaa](https://en.wikipedia.org/wiki/Ujamaa#Ujamaa_village_structure) effect. During the 1960's - 1980's, Ujamaa villages in Tanzania were widely constructed in ways to emphasize community and economic self-reliance. The villages were structured with homes in the center in rows, with a school and a town hall as the center complex. The villages were also typically surrounded by larger communal agricultural farms, which were frequently monocropped. The most current land cover map of Tanzania appears to reflect this historical pattern (see section 4.1, Figure 7). 
+
+The next chunk mines the ARs, in proximity to buildings for both surveys. It is intended to provide an indication of the staple crop systems that might evolve as rural populations grow in both Rwanda and Tanzania.
+
+```{r, results = 'hide'}
+# Building subset
+build <- staple_df[which(staple_df$build == 'TRUE'), ]
+build <- build[ , c(6:25)]
+trans <- as(build, "transactions")
+
+# Staple crops in proximity to buildings rules
+buildr <- apriori(trans, parameter = list(target = "rules", support = 0.025, confidence = 0.8, 
+                                          minlen = 2))
+
+# Filter rules by lift and redundancy
+buildr <- subset(buildr, subset = lift > 1.5)
+buildr <- buildr[!is.redundant(buildr)]
+buildr <- sort(buildr, by = "support")
+```
+
+```{r, echo = FALSE, fig.align = "center", out.width = "80%", fig.cap = "**Figure 6:** Association rule graph of the main staple crop combinations found in close proximity to rural buildings in Rwanda and Tanzania."}
+
+par(mar = c(4,4,1,1))
+plot(buildr, method = "graph", col ="black")
+```
+
+```{r, echo = FALSE}
+# Staple crop systems rule mining summary table
+inspectDT(buildr)
+```
+
+Figure 6 and its AR table represents one of the central data mining results explored in this notebook. These ARs label the main mixed staple cropping systems in Rwanda and Tanzania. Given that there is significant population growth in both countries, the ARs that are identified as being **interesting** may also provide an evolutionary preview of cropping systems in these landscapes, at least over a 20 year time horizon. They may also be quite useful for crop diversification priority setting for both subsistence and commercial agriculture in the two countries. Note that the left-to-right trend in the AR graph largely reflects the main differences between the two countries (with overlap).
+
+## Aside: AR recommendations in proximity to buildings
+
+One thing that still appears to be missing from the `arules` package is a general function for recommending (or predicting) additional staple crops at any new PSUs based on the developed association rules. Fortunately, such a function has been written by [J. de Jong (2016)](https://johanndejong.wordpress.com/2016/11/22/efficient-recommending-with-the-arules-package/). We have stolen it here because it is elegant and fast. Please check it out for your own use.
+
+```{r}
+recommend <- function(
+  rules, # object with association rules
+  newdata # item Matrix object
+) {
+    lhs_match <- is.superset(
+    newdata,
+    lhs(rules),
+    sparse = TRUE
+  )
+  
+  rec <- lhs_match %*% t(rhs(rules)@data)
+  rownames(rec) <- rownames(newdata)
+  colnames(rec) <- colnames(newdata)
+  as(t(rec), "itemMatrix")
+}
+```
+
+We can now use this next chunk to generate the staple crop recommendations based on the developed association rule-base. Of course, this could also be done for any new data, as when you are standing in a field and are collecting new ground observations.
+
+```{r}
+trans <- as(trans, "itemMatrix")
+preds <- recommend(buildr, trans)
+recom <- DATAFRAME(preds)
+build <- cbind(build, recom)
+```
+
+```{r, echo = FALSE}
+buildr_lhs <- DATAFRAME(buildr)
+buildr_lhs <- as.data.frame(unique(buildr_lhs[1]))
+```
+
+# Spatial multilabel classification of mixed cropping systems
+
+In this section, we evaluate how the occurrence of mixed-systems varies spatially, in proximity to buildings, in response to various environmental features and the most recent [GeoSurvey (2020)](https://osf.io/j8y3z/) land cover prediction maps for Rwanda and Tanzania. This allows us to provide better sub-regional estimates of the occurrence of mixed vs monocropped systems as well as giving a baseline for mapping where specific cropping systems are likely to occur in these landscapes. To keep things concise, we shall only use the 13 main staple crop labels that are presented in Figure 6 and its associated AR table.
+
+We will be using a **stacked generalization** approach here ([Wolpert, 1992](http://machine-learning.martinsewell.com/ensembles/stacking/Wolpert1992.pdf)). This amounts to independently training individual binary classifiers for each label and then combining (stacking) the classifiers to account for dependencies between labels. Given unseen samples, the stacked model then predicts all of the labels for which the respective classifiers indicate positive results. 
+
+This method of dividing the task into multiple binary tasks resembles the more familiar *one-vs-rest* or *one-vs-one* methods that are typically used in [multiclass classification](https://en.wikipedia.org/wiki/Multiclass_classification) tasks. However, it is fundamentally different because binary or multiclass classifiers only deal with single rather than multiple target labels; see e.g., [Probst et. al., (2017)](https://journal.r-project.org/archive/2017/RJ-2017-012/RJ-2017-012.pdf) for a concise description about how stacking works in the context of multilabel classification.
+
+## Load and extract raster features
+
+```{r}
+dir.create("grids", showWarnings=F)
+
+# Load load rasters
+glist <- list.files(path="./grids", pattern="tif", full.names = T)
+grids <- stack(glist)
+
+# Survey variable selection and projection
+vars <- c("survey", "lon", "lat", "rich", "build", "catt", "shee", "goat", "poul", "maiz", "sorg", "rice",
+          "bean", "soyb", "cass", "spot", "bana", "sunf")
+mlc_df <- staple_df[vars] ## select variables
+
+mlc.proj <- as.data.frame(project(cbind(mlc_df$lon, mlc_df$lat), "+proj=laea +ellps=WGS84 +lon_0=20 +lat_0=5
+                                  +units=m +no_defs"))
+colnames(mlc.proj) <- c("x","y")
+mlc_df <- cbind(mlc_df, mlc.proj)
+coordinates(mlc_df) <- ~x+y
+projection(mlc_df) <- projection(grids)
+
+# Extract gridded variables at survey locations
+mlcgrid <- extract(grids, mlc_df)
+mlc_df <- as.data.frame(cbind(mlc_df, mlcgrid))
+```
+
+The pre-processed Rwanda and Tanzania raster data (in the `grids` raster stack) we will be using were derived and reprojected (to CRS = +proj=laea +ellps=WGS84 +lon_0=20 +lat_0=5 +units=m +no_defs) from their primary open sources. Short descriptions of the included rasters are listed in the table below.
+
+<br>
+```{r, echo = FALSE}
+library(DT)
+vars <- read.table("grids.csv", header = T, sep = ",")
+datatable(vars)
+```
+
+We will also be using the most recent [GeoSurvey](https://geosurvey.qed.ai/) based land cover maps for Rwanda and Tanzania. You can find out how the constituent layers (`bp20`, `cp20`, `wp20`, see the table immediately above) of this map were predicted by downloading the AfSIS land cover classification notebook from our OSF repository [here](https://osf.io/shkxp/).
+
+<br>
+```{r lccs_map, echo=FALSE, fig.align="center", out.width = '85%'}
+
+knitr::include_graphics("RW_TZ_LCCS.png")
+```
+
+```{r lccs_legend, echo=FALSE, fig.align="center", fig.cap="**Figure 7:** GeoSurvey-based land cover maps and area estimates for Rwanda and Tanzania (2020).", out.width = '80%'}
+
+knitr::include_graphics("LCCS_legend.png")
+```
+
+Note that the areas highlighted by the red boxes in the legend of Figure 7 are of primary interest here because they identify the main four cropland cover types in the two countries. The next chunk does a bit of cleanup and then writes out a data file for reuse.
+
+```{r, results = 'hide'}
+# Data clean-up
+mldat <- mlc_df[ , c(1,4:39)]
+# sum(is.na(mldat))
+mldat <- na.omit(mldat)
+rm(list=setdiff(ls(), c("mldat","grids"))) ## scrubs extraneous objects in memory
+
+# Write mldat dataframe to ./Results
+dir.create("Results", showWarnings=F)
+write.csv(mldat, "./Results/TZ_RW_mldat.csv", row.names = FALSE)
+```
+
+## Base learner training
+
+This first chunk sets an 80/20% calibration and validation partition. It is always best to do this as early as possible to avoid [data leakage](https://en.wikipedia.org/wiki/Leakage_(machine_learning)). The function `createDataPartition` in the [`caret`](https://topepo.github.io/caret/index.html) package can be used to generate balanced splits of the data. If the argument to this function is a factor, random sampling occurs within each class and will preserve the overall class distribution of the data. We partition on the `mixed` variable here. 
+
+The chunk also sets the calibration labels and the associated raster features. Note that while we are illustrating the code for the maize (`maiz`) staple crop distribution data here, you would also need to substitute the other 12 priority crops as labels and specify those with the `labs` variable in the chunk below. If we were to run all crops at once here, a "normal" computer would quickly run out of memory training the complete dataset.
+
+```{r}
+# Specify mixed systems partition
+mldat$mixed <- as.factor(ifelse(mldat$rich >1, "mixed", "mono")) ## specify mixed vs mono-cropped systems
+
+# Set calibration/validation set randomization seed
+seed <- 12358
+set.seed(seed)
+mldat <- mldat[sample(1:nrow(mldat)), ] # randomize observations
+
+# Split data into calibration and validation sets by survey
+mlIndex <- createDataPartition(mldat$mixed, p = 4/5, list = F, times = 1)
+ml_cal <- mldat[ mlIndex,]
+ml_val <- mldat[-mlIndex,]
+
+# Calibration labels
+labs <- c("maiz") ## insert other presence/absence crop labels here 
+lcal <- as.vector(t(ml_cal[labs]))
+lcal <- as.factor(ifelse(lcal == "TRUE", "a", "b"))
+
+# Set raster calibration features
+fcal <- ml_cal[ ,c(17:37)]
+```
+
+Up to this point the script takes < 1 minute to run. The next training and prediction steps take ~30 minutes per label to run on a normal (2.4 GHz, 8 core, 32 Gb memory) computer with a standard [`randomForest`](https://www.rdocumentation.org/packages/randomForest/versions/4.7-1.1/topics/randomForest) base learner. Generating the respective spatial predictions takes about 80% of that time. 
+
+You can change the base learner in [`caret`](https://topepo.github.io/caret/index.html). There are many available! You could also run several base learners sequentially with e.g., with [`caretEnsemble`](https://www.rdocumentation.org/packages/caretEnsemble/versions/2.0.1), [`tidymodels`](https://www.tidymodels.org/), [`SuperLearner`](https://www.rdocumentation.org/packages/SuperLearner/versions/2.0-28/topics/SuperLearner), [`RWeka`](https://www.rdocumentation.org/packages/RWeka/versions/0.4-44), and/or [`mlr3`](https://mlr3.mlr-org.com/). Use of the replacement for the [`raster`](https://www.rdocumentation.org/packages/raster/versions/3.4-5) package ... [`terra`](https://rspatial.org/terra/pkg/1-introduction.html), might also speed things up. There are also many Python based alternatives.
+
+```{r, results = 'hide'}
+dir.create("base_learner", showWarnings=F)
+
+# Start doParallel to parallelize model fitting
+mc <- makeCluster(detectCores())
+registerDoParallel(mc)
+
+# Control setup for 10-fold cross-validation
+set.seed(seed)
+tc <- trainControl(method = "cv", classProbs = T, 
+                   summaryFunction = twoClassSummary, allowParallel = T)
+
+# Model training
+bl <- train(fcal, lcal, 
+            method = "rf",
+            family = "binomial",
+            preProc = c("center","scale"), 
+            metric = "ROC",
+            trControl = tc)
+
+# Model outputs
+bl.pred <- predict(grids, bl, type = "prob") ## spatial predictions
+stopCluster(mc)
+fname <- paste("./base_learner/", labs, "_bl.rds", sep = "")
+saveRDS(bl, fname) ## save model object
+
+# Save prediction raster
+tname <- paste("./base_learner/", labs, "_bl.tif", sep = "")
+writeRaster(bl.pred, filename=tname, datatype="FLT4S", overwrite=T) ## save raster file
+```
+
+To save time we have pre-trained all 15 `randomForest` base learners we'll be using for the stacking and model evaluation steps below (13 for the staple crops, 1 for classifying PSUs in proximity to buildings, and 1 for mixed systems). You can download all of the associated `.rmd` and `.tif` files from our OSF repository [here](https://osf.io/csmzv). If you'd like to train your own classifiers, make sure to scrub extraneous objects in memory after the initial training step only retaining the `ml_cal` and `ml_val` and `lcal` dataframes for the next steps.
+
+```{r, results = 'hide'}
+rm(list=setdiff(ls(), c("ml_cal", "ml_val", "labs", "lcal"))) ## scrubs extraneous objects in memory
+```
+
+## Stacked learner training
+
+In this stacking step we use the base learner classifications to model the spatial dependencies between staple crops. The overall training process is quite similar to that for the base learners. The main change is that is that the training features that are used are now the base learner features that were generated in Section 4.2 above. This is one form of **problem transformation** (see e.g., [Probst et. al., (2017)](https://journal.r-project.org/archive/2017/RJ-2017-012/RJ-2017-012.pdf)), which handles the dependencies among multiple labels. The setup for this is as follows:
+
+```{r, results = 'hide'}
+# Load base learner rasters
+file.remove("./base_learner/maiz_bl.tif.aux.xml")
+glist <- list.files(path="./base_learner", pattern="_bl.tif", full.names = T)
+grids <- stack(glist) ## load base learner grids
+
+# Base learner grid selection and projection
+mlc.proj <- as.data.frame(project(cbind(ml_cal$mlon, ml_cal$mlat), "+proj=laea +ellps=WGS84 +lon_0=20 +lat_0=5
+                                  +units=m +no_defs"))
+colnames(mlc.proj) <- c("x","y")
+ml_cal <- cbind(ml_cal, mlc.proj)
+coordinates(ml_cal) <- ~x+y
+projection(ml_cal) <- projection(grids)
+
+# Extract gridded variables at survey locations
+mlcgrid <- extract(grids, ml_cal)
+ml_cal <- as.data.frame(cbind(ml_cal, mlcgrid))
+```
+
+We can then proceed with the stacked predictions as before ... in this case to account for the label dependencies. Note however, that we are also using a different classifier here ([`glmStepAIC`](https://www.rdocumentation.org/packages/MASS/versions/7.3-57/topics/stepAIC)). You can change this as you see fit. You can also download the pre-trained classifiers and `.tif` files from [here](https://osf.io/yze7k). 
+
+```{r, results = 'hide'}
+# Set calibration features
+fcal <- ml_cal[ ,c(39:45,47:53)]
+
+# Start doParallel to parallelize model fitting
+mc <- makeCluster(detectCores())
+registerDoParallel(mc)
+
+# Control setup for cross-validation
+set.seed(123)
+tc <- trainControl(method = "cv", classProbs = T, 
+                   summaryFunction = twoClassSummary, allowParallel = T)
+
+# Model training
+st <- train(fcal, lcal, 
+            method = "glmStepAIC",
+            family = "binomial",
+            metric = "ROC",
+            trControl = tc)
+
+# Model outputs
+st.pred <- predict(grids, st, type = "prob") ## spatial predictions
+stopCluster(mc)
+fname <- paste("./Results/", labs, "_st.rds", sep = "")
+saveRDS(st, fname) ## save model object
+
+# Save prediction raster
+tname <- paste("./Results/", labs, "_st.tif", sep = "")
+writeRaster(st.pred, filename=tname, datatype="FLT4S", overwrite=T) ## save raster file
+```
+
+Following a few GIS cosmetics in [GRASS](https://grass.osgeo.org/), we can display the stacked multilabel prediction maps. Note that the individual maps and the associated `.rds` model files are openly available from our OSF repository [here](https://osf.io/yze7k). Also note that we are only displaying the cropland [region of interest](https://en.wikipedia.org/wiki/Region_of_interest), which is the primary focus of this notebook. Of course, livestock also occur outside of this area, particularly in the extensive [rangelands](https://en.wikipedia.org/wiki/Rangeland) of Tanzania.
+
+<br>
+```{r crop_distributions, echo = FALSE, fig.align = "center", fig.cap="**Figure 8:** Stacked probability predictions (in green or red) of the main staple food crop distributions in Rwanda and Tanzania. Note that the areas in white fall outside of our cropland region of interest.", out.width = '95%'}
+
+knitr::include_graphics("Staple predictions.png")
+```
+
+## Receiver operating characteristics
+
+[ROC](https://people.inf.elte.hu/kiss/11dwhdm/roc.pdf) graphs are used to provide information about classifier test performance on unseen data. The closer the apex of the curve toward the upper left corner, the greater the discriminatory  ability of the test (i.e., the  true-positive rate is high and the false-positive rate is low. We use it here to assess the classification performance of the individual stacked models of the **calibration set**. The next chunks do the calculations and plot the ROC curves using the [`dismo`](https://cran.r-project.org/web/packages/dismo/dismo.pdf) package. Areas under the ROC curve ([AUC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic)) of 1 discriminate perfectly. AUC values of 0.5 are no better than a random guess. The next chunk sets this up.
+
+```{r, results = 'hide'}
+# Load stacked learner rasters
+file.remove("./Results/maiz_st.tif.aux.xml")
+glist <- list.files(path="./Results", pattern="_st.tif", full.names = T)
+grids <- stack(glist) ## load stacked learner grids
+
+coordinates(ml_cal) <- ~x+y
+projection(ml_cal) <- projection(grids)
+mlcgrid <- extract(grids, ml_cal)
+ml_cal <- as.data.frame(cbind(ml_cal, mlcgrid))
+
+# Write out calibration file for reuse
+write.csv(ml_cal, "./Results/TZ_RW_ml_cal.csv", row.names = FALSE)
+```
+
+## Stacked model validation
+
+```{r}
+
+```
+
+# Main takeaways
+
+* Dietary diversity and balance have long been recognized as key elements of high quality diets by nutritionists, and a variety of foods across and within food groups is recommended in most national dietary guidelines. Similarly, staple crop diversity (richness and evenness) is also generally recognized by agronomists and animal scientists as a buffer against various food production risks. They should also be considered by e.g., extension services in recommending agricultural inputs such as improved germplasm, fertilizer, lime, veterinary inputs, etc.
+
+* This notebook explores a new, relatively large ground-survey dataset of 20 staple food crop occurrences in 0.25 ha circular plots (PSUs) collected on spatially representative cropland sampling frames in Rwanda and Tanzania. The respective surveys were designed to be suitable for baseline staple crop mapping and crop diversity monitoring activities. They include ground observations of the occurrences of: cattle, sheep, goats, poultry, maize, wheat, sorghum, rice, bean, cowpea, pigeon pea, soybean, groundnut, Irish potato, sweet potato, cassava, yam, banana/plantain, sugarcane, and sunflower.
+
+* Maize is the most common staple and yam is the least common across the two nationally representative surveys. Wheat, rice and potatoes only occur rarely in both Rwanda and Tanzania; i.e., at <2.5% of the current nationally representative observations. Note that these crops have been identified as priorities for further agronomic research in Rwanda by [RAB](https://www.rab.gov.rw/index.php?id=158) in addition to maize, beans, cassava and banana as part of an ongoing Crop Intensification Program ([CIP](https://www.rab.gov.rw/index.php?id=188)). [TARI](https://www.tari.go.tz/) have identified sunflower, rice and wheat in addition to maize and livestock as their main research priorities.
+
+* We initially used an association rule (AR) mining workflow to explore staple food crop combinations that are both prevalent and potentially informative; that is, ARs that exhibit adequate support, confidence and lift to consider them to be of generalizable interest for identifying potential staple crop diversification pathways in both countries.
+
+* Rwanda's staple food production systems appear to be more diverse than those typically found in Tanzania. However, this observation appears to be largely related to differences in rural population densities in the two countries, as indicated by differences in the proximity to buildings. Staple food cropping systems in proximity to buildings will generally be more complex in both Rwanda and Tanzania.
+
+* Notably, there are 2^20^-1 potential staple crop combinations that might occur at random with 20 indicator species. One could spend a lot of time generating all those *potential* combinations with SQL queries. We have identified ..., which are both prevalent and potentially interesting for agricultural and human dietary diversity management. That part of the code in the notebook runs in < 1 minute on a normal laptop.
+
+* From the exploratory analyses it is quite clear that ARs in both national surveys depend strongly on proximity to buildings. Specifically, there is a subset of 13 [indicator](https://www.sciencedirect.com/topics/agricultural-and-biological-sciences/indicator-species) staple crops including cattle, goats, sheep, poultry, maize, sorghum, rice, beans, soybean, cassava, sweet potato, banana/plantain and sunflower that are strongly associated with the occurrence of buildings (see Figure 6 and its AR table).
+
+* Section 4 (Figure 8) shows spatial predictions of where potentially interesting, mixed cropping systems occur in Rwanda and Tanzania.
+
+Any questions, comments or corrections related to this notebook are most welcome via [AFSIS](mailto:mgw.africasoils.info).
+
+<br>
+```{r cartoon, echo = FALSE, fig.align = "center", out.width = '30%', fig.cap = "**Gary Larson's opinion ([The Farside](https://www.thefarside.com/)).**"}
+
+knitr::include_graphics("Larson banana.png")
+```
+
