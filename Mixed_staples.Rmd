@@ -493,7 +493,7 @@ mlcgrid <- extract(grids, ml_cal)
 ml_cal <- as.data.frame(cbind(ml_cal, mlcgrid))
 ```
 
-We can then proceed with the stacked predictions as before ... in this case to account for the label dependencies. Note however, that we are also using a different classifier here ([`glmStepAIC`](https://www.rdocumentation.org/packages/MASS/versions/7.3-57/topics/stepAIC)). You can change this as you see fit. You can also download the pre-trained classifiers and `.tif` files from [here](https://osf.io/yze7k). 
+We can then proceed with the stacked predictions as before, in this case to account for the label dependencies. Note however, that we are also using a different classifier here ([`glmStepAIC`](https://www.rdocumentation.org/packages/MASS/versions/7.3-57/topics/stepAIC)). You can change this as you see fit. You can also download the pre-trained classifiers and `.tif` files from [here](https://osf.io/yze7k). 
 
 ```{r, results = 'hide'}
 # Set calibration features
@@ -601,7 +601,6 @@ poul_auc <- auc(poul_roc)
 
 You get the drift of this simple pattern (for e.g, livestock in this case), so we'll not show the rest of the code. However, it is included in the markdown document. The next chunk plots the ROC curves. We have grouped the ROC curves in 2 categories, livestock and crops.
 
-
 ```{r, echo = FALSE, results = 'hide'}
 # Maize
 maiz_roc <- roc(ml_val$maiz, ml_val$maiz_st)
@@ -667,15 +666,13 @@ lines(sunf_roc, col="grey")
 
 * Maize is the most common staple and yam is the least common across the two nationally representative surveys. Wheat, rice and potatoes only occur rarely in both Rwanda and Tanzania; i.e., at <2.5% of the current nationally representative observations. Note that these crops have been identified as priorities for further agronomic research in Rwanda by [RAB](https://www.rab.gov.rw/index.php?id=158) in addition to maize, beans, cassava and banana as part of an ongoing Crop Intensification Program ([CIP](https://www.rab.gov.rw/index.php?id=188)). [TARI](https://www.tari.go.tz/) have identified sunflower, rice and wheat in addition to maize and livestock as their main research priorities.
 
-* We initially used an association rule (AR) mining workflow to explore staple food crop combinations that are both prevalent and potentially informative; that is, ARs that exhibit adequate support, confidence and lift to consider them to be of generalizable interest for identifying and base-line mapping potential staple crop diversification pathways in both countries.
-
 * Rwanda's staple food production systems appear to be more diverse than those typically found in Tanzania. However, this observation appears to be largely related to differences in rural population densities in the two countries, as indicated by differences in the proximity to buildings. Staple food cropping systems in proximity to buildings will generally be more complex in both Rwanda and Tanzania.
 
-* Notably, there are 2^20^-1 potential staple crop combinations that might occur at random with 20 indicator species. One could spend a lot of time generating all those *potential* combinations with SQL queries. We have identified ..., which are both prevalent and potentially interesting for agricultural and human dietary diversity management. That part of the code in the notebook runs in < 1 minute on a normal laptop.
+* Notably, there are 2^20^-1 potential staple crop combinations that might occur at random with 20 indicator species. One could spend a lot of time generating all those *potential* combinations with SQL queries. We have identified 83 ARs, which are both prevalent and potentially interesting for agricultural and human dietary diversity management. That part of the code in the notebook runs in < 1 minute on a normal laptop.
 
 * From the exploratory analyses it is quite clear that ARs in both national surveys depend strongly on proximity to buildings. Specifically, there is a subset of 13 [indicator](https://www.sciencedirect.com/topics/agricultural-and-biological-sciences/indicator-species) staple crops including cattle, goats, sheep, poultry, maize, sorghum, rice, beans, soybean, cassava, sweet potato, banana/plantain and sunflower that are strongly associated with the occurrence of buildings (see Figure 6 and its AR table).
 
-* Section 4 (Figure 8) shows the spatial predictions of where potentially interesting, mixed cropping systems occur in Rwanda and Tanzania. The underlying models and their validation predictions indicate that these predictions are quite reliable with ROC-AUCs of >0.8. Model validation runs (Figure 9) on a test-set show that the multilabel classifiers are quite robust and informative. 
+* Section 4 (Figure 8) shows the spatial predictions of where interesting, mixed cropping systems occur in Rwanda and Tanzania. The underlying models and their validation predictions indicate that these predictions are quite reliable with ROC-AUCs between 0.75 - 0.92. Model validation runs (Figure 9) on a fairly large test-set show that the multilabel classifiers are quite robust and informative. 
 
 Any questions, comments or corrections related to this notebook are most welcome via [AFSIS](mailto:mgw.africasoils.info).
 
