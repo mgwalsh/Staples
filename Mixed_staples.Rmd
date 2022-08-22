@@ -662,8 +662,9 @@ Finally, we can also take a look at how well the stacked model results would rep
 
 ```{r}
 # Quasibinomial model
-esr <- glm(cbind(rich, 20-rich) ~ catt_st+shee_st+goat_st+poul_st+maiz_st+sorg_st+rice_st+bean_st
-           +soyb_st+cass_st+spot_st+bana_st+spot_st+sunf_st, family = quasibinomial(), data = ml_cal)
+esr <- glm(cbind(rich, 20-rich) ~ survey + catt_st + shee_st + goat_st + poul_st + maiz_st + sorg_st
+           + rice_st + bean_st + soyb_st + cass_st + spot_st + bana_st + spot_st + sunf_st, 
+           family = quasibinomial(), data = ml_cal)
 ml_cal$esr <- predict(esr, ml_cal)
 ml_val$esr <- predict(esr, ml_val)
 
@@ -674,7 +675,7 @@ write.csv(ml_val, "./Results/TZ_RW_ml_val.csv", row.names = FALSE)
 summary(esr)
 ```
 
-We will leave the validation, mapping steps, and potential use case discussions for such a model (and/or others) for a future notebook. However, from a policy perspective decision-makers might wish to maximize this type of objective function for rural households to increase nutritional diversity and/or to reduce staple food crop production risks. Conversely, from a commercial production perspective, decision-makers might use it to optimize sub-national production goals for commercially viable staples such as maize, rice, sunflower, meat and dairy products within their suitable production environments.
+We will leave the validation, mapping steps, and potential use case discussions for such a model (and/or others) for a future notebook. However, from a policy perspective decision-makers might wish to maximize this type of objective function for rural households to increase nutritional diversity and/or to reduce staple food crop production risks. Conversely, from a commercial production perspective decision-makers might use it to optimize sub-national production goals for commercially viable staples such as maize, rice, sunflower, meat and dairy products within their suitable production environments.
 
 # Main takeaways
 
