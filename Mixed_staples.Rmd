@@ -344,10 +344,13 @@ This method of dividing the task into multiple binary tasks resembles the more f
 
 ## Load and extract raster features
 
+You can download all of the raster files that are needed for running the next chunks from our OSF repository [here](https://osf.io/phcsd). 
+
 ```{r}
+# Unzip files into a sub-directory called "grids"
 dir.create("grids", showWarnings=F)
 
-# Load load rasters
+# Load rasters
 glist <- list.files(path="./grids", pattern="tif", full.names = T)
 grids <- stack(glist)
 
@@ -658,12 +661,12 @@ lines(sunf_roc, col="grey")
 
 ## Modeling staple crop species richness
 
-Finally, we can also take a look at how well the stacked model results would represent staple crop species richness. This type of model could be used as a mixed systems management [objective function](https://en.wikipedia.org/wiki/Loss_function) in the future. We can fit a simple [quasibinomial](https://randomeffect.net/post/2020/10/12/quasi-binomial-in-r-glm/) generalized linear model to the training data with:
+Finally, we can also take a look at how well the stacked model results would represent staple crop species richness. This type of model could be used as a mixed systems management [objective function](https://en.wikipedia.org/wiki/Loss_function) in the future. The next bit is a flavor of what that might look like. We can fit a simple [quasibinomial](https://randomeffect.net/post/2020/10/12/quasi-binomial-in-r-glm/) generalized linear model to the training data with:
 
 ```{r}
 # Quasibinomial model
-esr <- glm(cbind(rich, 20-rich) ~ survey + catt_st + shee_st + goat_st + poul_st + maiz_st + sorg_st
-           + rice_st + bean_st + soyb_st + cass_st + spot_st + bana_st + spot_st + sunf_st, 
+esr <- glm(cbind(rich, 20-rich) ~ survey + catt_st + shee_st + goat_st + poul_st + maiz_st
+           + sorg_st + rice_st + bean_st + soyb_st + cass_st + spot_st + bana_st + spot_st + sunf_st, 
            family = quasibinomial(), data = ml_cal)
 ml_cal$esr <- predict(esr, ml_cal)
 ml_val$esr <- predict(esr, ml_val)
@@ -675,11 +678,11 @@ write.csv(ml_val, "./Results/TZ_RW_ml_val.csv", row.names = FALSE)
 summary(esr)
 ```
 
-We will leave the validation, mapping steps, and potential use case discussions for such a model (and/or others) for a future notebook. However, from a policy perspective decision-makers might wish to maximize this type of objective function for rural households to increase nutritional diversity and/or to reduce staple food crop production risks. Conversely, from a commercial production perspective decision-makers might use it to optimize sub-national production goals for commercially viable staples such as maize, rice, sunflower, meat and dairy products within their suitable production environments.
+We will leave the validation, mapping and potential use case discussions for such a model (and/or others) for a future notebook. However, from a policy perspective decision-makers may wish to maximize this type of objective function for rural households to increase nutritional diversity and/or to reduce staple food crop production risks for home consumption. Conversely, from a commercial production perspective decision-makers might use it to optimize sub-national production goals for commercially viable staples such as maize, rice, sunflower, meat and dairy products within their suitable production environments.
 
 # Main takeaways
 
-* Dietary diversity and balance have long been recognized as key elements of high quality diets by nutritionists, and a variety of foods across and within food groups is recommended in most national dietary guidelines. Similarly, staple crop diversity (richness and evenness) is also generally recognized by agronomists and animal scientists as a buffer against various food production risks. They should also be considered by e.g., extension services in recommending agricultural inputs such as improved germplasm, fertilizer, lime, veterinary inputs, etc.
+* Dietary diversity and balance have long been recognized as key elements of high quality diets by nutritionists, and a variety of foods across and within food groups is recommended in most national dietary guidelines. Similarly, staple crop diversity (richness and evenness) is also generally recognized by agronomists and animal scientists as a buffer against various food production risks. They should also be considered by e.g., extension services in recommending agricultural inputs such as improved germplasm, fertilizer, lime, veterinary services, etc.
 
 * This notebook explores a new, relatively large ground-survey dataset of 20 staple food crop occurrences in 0.25 ha circular plots (PSUs) collected on spatially representative cropland sampling plans in Rwanda and Tanzania. The respective surveys were designed to be suitable for baseline staple crop mapping and crop diversity monitoring activities. They include ground observations of the occurrences of: cattle, sheep, goats, poultry, maize, wheat, sorghum, rice, bean, cowpea, pigeon pea, soybean, groundnut, Irish potato, sweet potato, cassava, yam, banana/plantain, sugarcane, and sunflower.
 
