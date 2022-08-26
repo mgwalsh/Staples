@@ -61,12 +61,6 @@ if (any(installed_packages == FALSE)) {
 invisible(lapply(packages, library, character.only = TRUE))
 ```
 
-```{r, echo = FALSE}
-dir.create("./grids")
-dir.create("./Results")
-dir.create("./base_learner")
-```
-
 The survey data and figures that are used in this notebook can be downloaded from https://osf.io/wcde3. The next chunk loads the data from your working directory.
 
 ```{r, results = 'hide'}
@@ -332,13 +326,13 @@ buildr_lhs <- DATAFRAME(buildr)
 buildr_lhs <- as.data.frame(unique(buildr_lhs[1]))
 ```
 
-Note however that this approach suffers from the so called [cold start problem](https://en.wikipedia.org/wiki/Cold_start_(recommender_systems)#cite_note-Koren09-25). There are various mitigation strategies for this e.g., by including the approach that is illustrated in the next section.
+Note however that this approach suffers from the so called [cold start problem](https://en.wikipedia.org/wiki/Cold_start_(recommender_systems)#cite_note-Koren09-25). There are various mitigation strategies for this e.g., by including the approach that is illustrated in the next section with a [content-based filtering](https://en.wikipedia.org/wiki/Recommender_system) approach.
 
 # Spatial multilabel classification of mixed cropping systems
 
 In this section, we evaluate how the occurrence of mixed-systems varies spatially, in proximity to buildings, in response to various environmental features and the most recent [GeoSurvey (2020)](https://osf.io/j8y3z/) land cover prediction maps for Rwanda and Tanzania. This allows us to provide better sub-regional estimates of the occurrence of mixed vs monocropped systems as well as giving a baseline for mapping where specific cropping systems are likely to occur in these landscapes. To keep things concise, we shall only use the 13 main staple crop labels that are presented in Figure 6 and its associated AR table.
 
-We will be using a **stacked generalization** approach here ([Wolpert, 1992](http://machine-learning.martinsewell.com/ensembles/stacking/Wolpert1992.pdf)). This amounts to independently training individual binary classifiers for each label and then combining (stacking) the classifiers to account for dependencies between labels. Given unseen samples, the stacked model then predicts all of the labels for which the respective classifiers indicate positive results. 
+We will be using a **stacked generalization** here ([Wolpert, 1992](http://machine-learning.martinsewell.com/ensembles/stacking/Wolpert1992.pdf)). This amounts to independently training individual binary classifiers for each label and then combining (stacking) the classifiers to account for dependencies between labels. Given unseen samples, the stacked model then predicts all of the labels for which the respective classifiers indicate positive results. 
 
 This method of dividing the task into multiple binary tasks resembles the more familiar *one-vs-rest* or *one-vs-one* methods that are typically used in [multiclass classification](https://en.wikipedia.org/wiki/Multiclass_classification) tasks. However, it is fundamentally different because binary or multiclass classifiers only deal with single rather than multiple target labels; see e.g., [Probst et. al., (2017)](https://journal.r-project.org/archive/2017/RJ-2017-012/RJ-2017-012.pdf) for a concise description about how stacking works in the context of multilabel classification.
 
@@ -440,6 +434,8 @@ Up to this point the script takes < 1 minute to run. The next training and predi
 
 You can change the base learner in [`caret`](https://topepo.github.io/caret/index.html). There are many available! You could also run several base learners sequentially with e.g., with [`caretEnsemble`](https://www.rdocumentation.org/packages/caretEnsemble/versions/2.0.1), [`tidymodels`](https://www.tidymodels.org/), [`SuperLearner`](https://www.rdocumentation.org/packages/SuperLearner/versions/2.0-28/topics/SuperLearner), [`RWeka`](https://www.rdocumentation.org/packages/RWeka/versions/0.4-44), and/or [`mlr3`](https://mlr3.mlr-org.com/). Use of the replacement for the [`raster`](https://www.rdocumentation.org/packages/raster/versions/3.4-5) package ... [`terra`](https://rspatial.org/terra/pkg/1-introduction.html), might also speed things up. There are also many Python based alternatives.
 
+This next chunk requires a coffee-break.
+
 ```{r, results = 'hide'}
 dir.create("base_learner", showWarnings=F)
 
@@ -471,7 +467,7 @@ tname <- paste("./base_learner/", labs, "_bl.tif", sep = "")
 writeRaster(bl.pred, filename=tname, datatype="FLT4S", overwrite=T) ## save raster file
 ```
 
-To save time we have pre-trained all 15 `randomForest` base learners we'll be using for the stacking and model evaluation steps below (13 for the staple crops, 1 for classifying PSUs in proximity to buildings, and 1 for mixed systems). You can download all of the associated `.rmd` and `.tif` files from our OSF repository [here](https://osf.io/csmzv). If you'd like to train your own classifiers, make sure to scrub extraneous objects in memory after the initial training step only retaining the `ml_cal` and `ml_val` and `lcal` dataframes for the next steps.
+To save time we have pre-trained all 15 `randomForest` base learners we'll be using for the stacking and model evaluation steps below (13 for the staple crops, 1 for classifying PSUs in proximity to buildings, and 1 for mixed systems). Admitedly this is a bit of hack, but you can download all of the associated `.rds` model and `.tif` files from our OSF repository [here](https://osf.io/csmzv). If you'd like to train your own classifiers, make sure to scrub extraneous objects in memory after the initial training step only retaining the `ml_cal` and `ml_val` and `lcal` dataframes for the next steps.
 
 ```{r, results = 'hide'}
 rm(list=setdiff(ls(), c("ml_cal", "ml_val", "labs", "lcal"))) ## scrubs extraneous objects in memory
@@ -503,6 +499,8 @@ ml_cal <- as.data.frame(cbind(ml_cal, mlcgrid))
 We can then proceed with the stacked predictions as before, in this case to account for the label dependencies. Note however, that we are also using a different classifier here ([`glmStepAIC`](https://www.rdocumentation.org/packages/MASS/versions/7.3-57/topics/stepAIC)). You can change this as you see fit. You can also download the pre-trained classifiers and `.tif` files from [here](https://osf.io/yze7k). 
 
 ```{r, results = 'hide'}
+dir.create("stacked_learner", showWarnings=F)
+
 # Set calibration features
 fcal <- ml_cal[ ,c(39:45,47:53)]
 
@@ -525,11 +523,11 @@ st <- train(fcal, lcal,
 # Model outputs
 st.pred <- predict(grids, st, type = "prob") ## spatial predictions
 stopCluster(mc)
-fname <- paste("./Results/", labs, "_st.rds", sep = "")
+fname <- paste("./stacked_learner/", labs, "_st.rds", sep = "")
 saveRDS(st, fname) ## save model object
 
 # Save stacked prediction rasters
-tname <- paste("./Results/", labs, "_st.tif", sep = "")
+tname <- paste("./stacked_learner/", labs, "_st.tif", sep = "")
 writeRaster(st.pred, filename=tname, datatype="FLT4S", overwrite=T) ## save raster file
 ```
 
@@ -548,8 +546,8 @@ knitr::include_graphics("Staple predictions.png")
 
 ```{r, echo = "FALSE", results = 'hide'}
 # Load stacked learner rasters
-unlink("./Results/*.xml")
-glist <- list.files(path="./Results", pattern="_st.tif", full.names = T)
+unlink("./stacked_learner/*.xml")
+glist <- list.files(path="./stacked_learner", pattern="_st.tif", full.names = T)
 grids <- stack(glist) ## load stacked learner grids
 
 coordinates(ml_cal) <- ~x+y
@@ -560,11 +558,11 @@ ml_cal <- as.data.frame(cbind(ml_cal, mlcgrid))
 
 ## Stacked model testing
 
-Note that the models that have been developed have not seen any of the validation (test-set) data up to this stage. The next chunks provide Receiver Operator Characteristics ([ROC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic)) for the mapped predictions of the staple crops that were sampled, using the validation data. 
+Note that the models that have been developed have not seen any of the validation (test-set) data up to this stage. The next chunks provide Receiver Operator Characteristics ([ROC](https://en.wikipedia.org/wiki/Receiver_operating_characteristic)) for the mapped predictions of the staple crops that were sampled, using the validation data. To run the next chunks you have to download and unzip the associated rasters into the `stacked_learner` subdirectory (of your working directory) from our OSF repository [here](https://osf.io/yze7k).
 
 ```{r}
 # Load stacked learner rasters
-glist <- list.files(path="./Results", pattern="_st.tif", full.names = T)
+glist <- list.files(path="./stacked_learner", pattern="_st.tif", full.names = T)
 grids <- stack(glist) ## load stacked learner grids
 
 # Stacked learner grid selection and projection
